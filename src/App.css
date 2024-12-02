@@ -1,0 +1,261 @@
+:root {
+  --primary-color: #646cff;
+  --primary-hover: #535bf2;
+  --background-color: #f9f9f9;
+  --text-color: #213547;
+  --border-color: #e0e0e0;
+  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Base styles */
+body {
+  background-color: var(--background-color);
+  color: var(--text-color);
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: clamp(1rem, 3vw, 2rem);
+  box-sizing: border-box;
+}
+
+.container {
+  width: 100%;
+  max-width: 1400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+/* Typography */
+h1 {
+  text-align: center;
+  color: var(--primary-color);
+  font-size: clamp(1.8rem, 3vw, 2.5rem);
+  margin-bottom: clamp(1.5rem, 4vw, 3rem);
+}
+
+h3 {
+  color: var(--primary-color);
+  font-size: clamp(1.2rem, 2vw, 1.5rem);
+  margin-bottom: 1rem;
+}
+
+/* Mode Selector */
+.mode-selector {
+  display: flex;
+  gap: clamp(0.5rem, 2vw, 1rem);
+  justify-content: center;
+  margin: clamp(1rem, 3vw, 2rem) 0;
+}
+
+.mode-selector button {
+  padding: clamp(0.6em, 2vw, 0.8em) clamp(1em, 3vw, 1.5em);
+  font-size: clamp(0.9rem, 1.5vw, 1rem);
+  min-width: clamp(100px, 15vw, 150px);
+}
+
+/* Section Layouts */
+.encode-section,
+.decode-section {
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: clamp(1rem, 3vw, 2rem);
+  background: white;
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(1rem, 2vw, 1.5rem);
+}
+
+/* Image Upload Areas */
+.image-upload {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.image-preview {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(0.5rem, 2vw, 1rem);
+}
+
+.preview {
+  width: 100%;
+  max-width: clamp(200px, 50vw, 400px);
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+/* Form Elements */
+input[type="password"] {
+  width: 100%;
+  max-width: clamp(250px, 40vw, 300px);
+  padding: 0.8em 1.2em;
+  font-size: clamp(0.9rem, 1.5vw, 1rem);
+}
+
+input[type="file"] {
+  width: 100%;
+  max-width: clamp(250px, 40vw, 300px);
+  font-size: clamp(0.8rem, 1.5vw, 1rem);
+}
+
+/* Buttons */
+.download-btn,
+.reveal-btn {
+  width: 100%;
+  max-width: clamp(250px, 40vw, 300px);
+  padding: clamp(0.6em, 2vw, 0.8em) clamp(1em, 3vw, 1.2em);
+  font-size: clamp(0.9rem, 1.5vw, 1rem);
+}
+
+/* Results Area */
+.result {
+  width: 100%;
+  margin-top: clamp(1.5rem, 3vw, 2.5rem);
+  padding: clamp(1rem, 2vw, 1.5rem);
+}
+
+/* Responsive Breakpoints */
+/* Large Laptops and Desktops (1200px and up) */
+@media (min-width: 1200px) {
+  .container {
+    padding: 3rem;
+  }
+
+  .encode-section,
+  .decode-section {
+    padding: 2.5rem;
+  }
+
+  .preview {
+    max-width: 400px;
+  }
+}
+
+/* Tablets and Small Laptops (768px to 1199px) */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .container {
+    padding: 2rem;
+  }
+
+  .encode-section,
+  .decode-section {
+    padding: 2rem;
+    max-width: 800px;
+  }
+
+  .preview {
+    max-width: 350px;
+  }
+}
+
+/* Large Mobile Devices (481px to 767px) */
+@media (min-width: 481px) and (max-width: 767px) {
+  .container {
+    padding: 1.5rem;
+  }
+
+  .mode-selector {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .encode-section,
+  .decode-section {
+    padding: 1.5rem;
+  }
+
+  .preview {
+    max-width: 300px;
+  }
+}
+
+/* Small Mobile Devices (480px and below) */
+@media (max-width: 480px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .mode-selector {
+    flex-direction: column;
+    width: 100%;
+    max-width: 300px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .mode-selector button {
+    width: 100%;
+  }
+
+  .encode-section,
+  .decode-section {
+    padding: 1rem;
+  }
+
+  .preview {
+    max-width: 250px;
+  }
+
+  input[type="file"] {
+    font-size: 0.8rem;
+  }
+
+  .button-group {
+    width: 100%;
+  }
+}
+
+/* Dark Mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-color: #1a1a1a;
+    --text-color: #ffffff;
+    --border-color: #333333;
+    --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .encode-section,
+  .decode-section {
+    background: #242424;
+  }
+
+  input[type="password"] {
+    background: #333;
+    color: white;
+  }
+
+  .mode-selector button:not(.active) {
+    background: #333;
+    color: white;
+  }
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.result {
+  animation: fadeIn 0.3s ease-out;
+}
