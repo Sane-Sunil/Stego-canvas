@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import './App.css'
+import { Link } from 'react-router-dom'
 
 function App() {
   const [mode, setMode] = useState('encode')
@@ -345,126 +346,164 @@ function App() {
   }
 
   return (
-    <div className="container">
-      <h1>Mysterical Images</h1>
-      
-      <div className="mode-selector">
-        <button 
-          className={mode === 'encode' ? 'active' : ''} 
-          onClick={() => setMode('encode')}
-        >
-          Transfigure
-        </button>
-        <button 
-          className={mode === 'decode' ? 'active' : ''} 
-          onClick={() => setMode('decode')}
-        >
-          Untransfigure
-        </button>
-      </div>
+    <>
+      <div className="container">
+        <h1>Mystery Image</h1>
+        
+        <div className="mode-selector">
+          <button 
+            className={mode === 'encode' ? 'active' : ''} 
+            onClick={() => setMode('encode')}
+          >
+            Transfigure
+          </button>
+          <button 
+            className={mode === 'decode' ? 'active' : ''} 
+            onClick={() => setMode('decode')}
+          >
+            Untransfigure
+          </button>
+        </div>
 
-      {mode === 'encode' ? (
-        <div className="encode-section">
-          <div className="image-upload">
-            <h3>Cover Image:</h3>
-            <input type="file" accept="image/*" onChange={handleCoverImageUpload} />
-            {coverImage && (
-              <div className="image-preview">
-                <img src={coverImage} alt="Cover" className="preview" />
-                <button 
-                  className="download-btn"
-                  onClick={() => downloadImage(coverImage, 'cover-image.png')}
-                >
-                  Download Cover Image
-                </button>
-              </div>
-            )}
-          </div>
-          
-          <div className="image-upload">
-            <h3>Secret Image:</h3>
-            <input type="file" accept="image/*" onChange={handleSecretImageUpload} />
-            {secretImage && (
-              <div className="image-preview">
-                <img src={secretImage} alt="Secret" className="preview" />
-                <button 
-                  className="download-btn"
-                  onClick={() => downloadImage(secretImage, 'secret-image.png')}
-                >
-                  Download Secret Image
-                </button>
-              </div>
-            )}
-          </div>
-          
-          <input
-            type="password"
-            placeholder="Enter password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <button onClick={handleEncode}>Hide Image</button>
-          {resultImage && (
-            <div className="result">
-              <h3>Result Image:</h3>
-              <img src={resultImage} alt="Result" className="preview" />
-              <button 
-                className="download-btn"
-                onClick={() => downloadImage(resultImage, 'stego-image.png')}
-              >
-                Download Encoded Image
-              </button>
+        {mode === 'encode' ? (
+          <div className="encode-section">
+            <div className="image-upload">
+              <h3>Cover Image:</h3>
+              <input type="file" accept="image/*" onChange={handleCoverImageUpload} />
+              {coverImage && (
+                <div className="image-preview">
+                  <img src={coverImage} alt="Cover" className="preview" />
+                  <button 
+                    className="download-btn"
+                    onClick={() => downloadImage(coverImage, 'cover-image.png')}
+                  >
+                    Download Cover Image
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      ) : (
-        <div className="decode-section">
-          <div className="image-upload">
-            <h3>Image to Decode:</h3>
-            <input type="file" accept="image/*" onChange={handleCoverImageUpload} />
-            {coverImage && (
-              <div className="image-preview">
-                <img src={coverImage} alt="To decode" className="preview" />
+            
+            <div className="image-upload">
+              <h3>Secret Image:</h3>
+              <input type="file" accept="image/*" onChange={handleSecretImageUpload} />
+              {secretImage && (
+                <div className="image-preview">
+                  <img src={secretImage} alt="Secret" className="preview" />
+                  <button 
+                    className="download-btn"
+                    onClick={() => downloadImage(secretImage, 'secret-image.png')}
+                  >
+                    Download Secret Image
+                  </button>
+                </div>
+              )}
+            </div>
+            
+            <input
+              type="password"
+              placeholder="Enter password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button onClick={handleEncode}>Hide Image</button>
+            {resultImage && (
+              <div className="result">
+                <h3>Result Image:</h3>
+                <img src={resultImage} alt="Result" className="preview" />
                 <button 
                   className="download-btn"
-                  onClick={async () => {
-                    try {
-                      const extractedCover = await extractCoverImage(coverImage)
-                      downloadImage(extractedCover, 'extracted-cover.png')
-                    } catch (error) {
-                      alert('Failed to extract cover image: ' + error.message)
-                    }
-                  }}
+                  onClick={() => downloadImage(resultImage, 'stego-image.png')}
                 >
-                  Download Cover Image Only
+                  Download Encoded Image
                 </button>
               </div>
             )}
           </div>
-          
-          <input
-            type="password"
-            placeholder="Enter password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <button onClick={handleDecode} className="reveal-btn">Revelio</button>
-          
-          {decodedImage && (
-            <div className="result">
-              <h3>Hidden Image:</h3>
-              <img src={decodedImage} alt="Decoded" className="preview" />
-              <button 
-                className="download-btn"
-                onClick={() => downloadImage(decodedImage, 'revealed-image.png')}
-              >
-                Download Hidden Image
-              </button>
+        ) : (
+          <div className="decode-section">
+            <div className="image-upload">
+              <h3>Uncover mystery:</h3>
+              <input type="file" accept="image/*" onChange={handleCoverImageUpload} />
+              {coverImage && (
+                <div className="image-preview">
+                  <img src={coverImage} alt="To decode" className="preview" />
+                  <button 
+                    className="download-btn"
+                    onClick={async () => {
+                      try {
+                        const extractedCover = await extractCoverImage(coverImage)
+                        downloadImage(extractedCover, 'extracted-cover.png')
+                      } catch (error) {
+                        alert('Failed to extract cover image: ' + error.message)
+                      }
+                    }}
+                  >
+                    Download Cover Image Only
+                  </button>
+                </div>
+              )}
             </div>
-          )}
+            
+            <input
+              type="password"
+              placeholder="Enter password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button onClick={handleDecode} className="reveal-btn">Revelio</button>
+            
+            {decodedImage && (
+              <div className="result">
+                <h3>Hidden Image:</h3>
+                <img src={decodedImage} alt="Decoded" className="preview" />
+                <button 
+                  className="download-btn"
+                  onClick={() => downloadImage(decodedImage, 'revealed-image.png')}
+                >
+                  Download Hidden Image
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <footer className="footer">
+        <div className="footer-content">
+          <div className="project-links">
+            <div className="links-container">
+              <a 
+                href="https://github.com/Sane-Sunil/Stego-canvas" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="project-link"
+              >
+                <span>Source Code</span>
+              </a>
+              <a 
+                href="/not-found" 
+                className="project-link"
+              >
+                <img 
+                  src="https://assets.vercel.com/image/upload/front/favicon/vercel/180x180.png" 
+                  alt="Live Demo" 
+                />
+                <span>Live Demo</span>
+              </a>
+            </div>
+          </div>
+          <div className="creator-link">
+            <a 
+              href="https://github.com/Sane-Sunil/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+            >
+              <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="GitHub" />
+              <span>Sane Sunil</span>
+            </a>
+          </div>
         </div>
-      )}
-    </div>
+      </footer>
+    </>
   )
 }
 
