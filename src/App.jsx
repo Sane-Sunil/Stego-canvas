@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import './App.css'
-import { Link } from 'react-router-dom'
+
 
 function App() {
   const [mode, setMode] = useState('encode')
@@ -9,23 +9,75 @@ function App() {
   const [password, setPassword] = useState('')
   const [resultImage, setResultImage] = useState(null)
   const [decodedImage, setDecodedImage] = useState(null)
+  const [requiredPixels, setRequiredPixels] = useState(0)
+  const [secretFileSize, setSecretFileSize] = useState(0)
+  const [coverFileSize, setCoverFileSize] = useState(0)
+   const [secretData, setSecretData] = useState(null)
+   const [secretType, setSecretType] = useState('file')
+   const [secretText, setSecretText] = useState('')
+   const [decodedText, setDecodedText] = useState('')
+   const [secretFileType, setSecretFileType] = useState('')
 
-  const handleCoverImageUpload = (e) => {
+   const handleCoverImageUpload = (e) => {
     const file = e.target.files[0]
     if (file) {
+      setCoverFileSize(file.size)
       const reader = new FileReader()
       reader.onload = (e) => setCoverImage(e.target.result)
       reader.readAsDataURL(file)
     }
   }
 
-  const handleSecretImageUpload = (e) => {
+  const handleSecretUpload = (e) => {
     const file = e.target.files[0]
     if (file) {
-      const reader = new FileReader()
-      reader.onload = (e) => setSecretImage(e.target.result)
-      reader.readAsDataURL(file)
+      // Read as data URL for display (only if image)
+      if (file.type.startsWith('image/')) {
+        const readerDataURL = new FileReader()
+        readerDataURL.onload = (e) => setSecretImage(e.target.result)
+        readerDataURL.readAsDataURL(file)
+      } else {
+        setSecretImage(null)
+      }
+
+       // Read as array buffer for data
+       const readerArrayBuffer = new FileReader()
+       readerArrayBuffer.onload = (e) => {
+         const arrayBuffer = e.target.result
+         const uint8Array = new Uint8Array(arrayBuffer)
+         setSecretData(uint8Array)
+         setSecretFileType(file.type)
+         // Calculate required cover size based on file size
+         const fileSize = file.size
+         setSecretFileSize(fileSize)
+         const header = `file|${file.type}|`
+         const fullDataLength = header.length + fileSize
+         const encryptedLength = Math.ceil(fullDataLength * 4 / 3)
+         const dataBitsLength = encryptedLength * 8
+         const allBitsLength = 32 + dataBitsLength
+         const requiredPixels = Math.ceil(allBitsLength / 2)
+         setRequiredPixels(requiredPixels)
+       }
+      readerArrayBuffer.readAsArrayBuffer(file)
     }
+  }
+
+  const handleSecretTextChange = (e) => {
+    const text = e.target.value
+    setSecretText(text)
+    const encoder = new TextEncoder()
+    const uint8Array = encoder.encode(text)
+    setSecretData(uint8Array)
+    setSecretFileType('')
+    const fileSize = uint8Array.length
+    setSecretFileSize(fileSize)
+    const header = "text|"
+    const fullDataLength = header.length + fileSize
+    const encryptedLength = Math.ceil(fullDataLength * 4 / 3)
+    const dataBitsLength = encryptedLength * 8
+    const allBitsLength = 32 + dataBitsLength
+    const requiredPixels = Math.ceil(allBitsLength / 2)
+    setRequiredPixels(requiredPixels)
   }
 
   // Simple XOR encryption
@@ -40,123 +92,105 @@ function App() {
   // Simple XOR decryption
   const decryptData = (encoded, pass) => {
     try {
-      const data = atob(encoded)
+      // First decode from Base64
+      const encryptedData = atob(encoded)
       let result = ''
-      for(let i = 0; i < data.length; i++) {
-        result += String.fromCharCode(data.charCodeAt(i) ^ pass.charCodeAt(i % pass.length))
+      for(let i = 0; i < encryptedData.length; i++) {
+        const encryptedChar = encryptedData.charCodeAt(i)
+        const passChar = pass.charCodeAt(i % pass.length)
+        const decryptedChar = encryptedChar ^ passChar
+        result += String.fromCharCode(decryptedChar)
       }
       return result
-    } catch (e) {
+    } catch {
       return null
     }
   }
 
   const handleEncode = async () => {
-    if (!coverImage || !secretImage || !password) {
-      alert('Please provide both images and a password')
+    if (!coverImage || !secretData || !password) {
+      alert('Please provide cover image, secret data, and a password')
+      return
+    }
+    if (!secretData) {
+      alert('Secret data not loaded. Please re-upload the secret image.')
       return
     }
 
-    try {
-      const coverCanvas = document.createElement('canvas')
-      const secretCanvas = document.createElement('canvas')
-      const coverCtx = coverCanvas.getContext('2d')
-      const secretCtx = secretCanvas.getContext('2d')
-      
-      const coverImg = new Image()
-      const secretImg = new Image()
-      
-      coverImg.onload = () => {
+    const coverCanvas = document.createElement('canvas')
+    const coverCtx = coverCanvas.getContext('2d')
+
+    const coverImg = new Image()
+
+    coverImg.onload = () => {
+      try {
         coverCanvas.width = coverImg.width
         coverCanvas.height = coverImg.height
         coverCtx.drawImage(coverImg, 0, 0)
-        
-        secretImg.onload = () => {
-          try {
-            // Calculate maximum size for secret image
-            const coverPixels = coverImg.width * coverImg.height
-            const maxSecretPixels = Math.floor((coverPixels * 2 - 32) / 32) // Account for header and encryption overhead
-            
-            // Calculate scaling ratio
-            let ratio = 1
-            if (secretImg.width * secretImg.height > maxSecretPixels) {
-              ratio = Math.sqrt(maxSecretPixels / (secretImg.width * secretImg.height))
-            }
-            
-            // Scale secret image
-            const newWidth = Math.floor(secretImg.width * ratio)
-            const newHeight = Math.floor(secretImg.height * ratio)
-            
-            // Ensure minimum dimensions
-            if (newWidth < 1 || newHeight < 1) {
-              throw new Error('Cover image is too small to hide any secret image')
-            }
-            
-            console.log('Scaling secret image to:', newWidth, 'x', newHeight)
-            
-            secretCanvas.width = newWidth
-            secretCanvas.height = newHeight
-            secretCtx.drawImage(secretImg, 0, 0, newWidth, newHeight)
-            
-            // Get image data
-            const coverData = coverCtx.getImageData(0, 0, coverCanvas.width, coverCanvas.height)
-            const secretData = secretCtx.getImageData(0, 0, newWidth, newHeight)
-            
-            // Prepare the data to hide
-            const header = `${newWidth},${newHeight}|`
-            const pixelData = Array.from(secretData.data).join(',')
-            const fullData = header + pixelData
-            
-            // Encrypt the data
-            const encryptedData = encryptData(fullData, password)
-            
-            // Convert to binary
-            const dataBits = encryptedData.split('').map(char => 
-              char.charCodeAt(0).toString(2).padStart(8, '0')
-            ).join('')
-            
-            // Add length prefix (32 bits)
-            const lengthBits = dataBits.length.toString(2).padStart(32, '0')
-            const allBits = lengthBits + dataBits
-            
-            // Final size check
-            if (allBits.length > coverData.data.length * 2 - 32) {
-              throw new Error('Data still too large after scaling. Please use a larger cover image.')
-            }
-            
-            // Embed the data
-            const data = coverData.data
-            for (let i = 0; i < allBits.length; i++) {
-              const pixelIndex = Math.floor(i / 2) * 4
-              const colorOffset = i % 2
-              data[pixelIndex + colorOffset] = (data[pixelIndex + colorOffset] & 254) | parseInt(allBits[i])
-            }
-            
-            // Set marker
-            data[data.length - 4] = (data[data.length - 4] & 254) | 1
-            
-            coverCtx.putImageData(coverData, 0, 0)
-            const resultUrl = coverCanvas.toDataURL('image/png')
-            setResultImage(resultUrl)
-            
-            console.log('Encoding completed successfully')
-          } catch (error) {
-            console.error('Processing error:', error)
-            alert(error.message)
-            setResultImage(null)
-          }
+
+        // Hide the secret file bytes
+        // Get image data
+        const coverData = coverCtx.getImageData(0, 0, coverCanvas.width, coverCanvas.height)
+
+        // Check if the secret data can fit
+        const tempHeader = secretType === 'text' ? "text|" : `file|${secretFileType}|`
+        const tempFullData = tempHeader + Array.from(secretData).join(',')
+        const tempEncryptedData = encryptData(tempFullData, password)
+        const tempDataBits = tempEncryptedData.split('').map(char =>
+          char.charCodeAt(0).toString(2).padStart(8, '0')
+        ).join('')
+        const tempLengthBits = tempDataBits.length.toString(2).padStart(32, '0')
+        const tempAllBits = tempLengthBits + tempDataBits
+
+        if (tempAllBits.length > coverData.data.length / 2 - 32) {
+          throw new Error('Cover image is too small to hide the secret file. Please use a larger cover image.')
         }
-        
-        secretImg.src = secretImage
+
+        // Prepare the data to hide
+        const header = secretType === 'text' ? "text|" : `file|${secretFileType}|`
+        const fullData = header + Array.from(secretData).join(',')
+
+        // Encrypt the data
+        const encryptedData = encryptData(fullData, password)
+
+        // Convert to binary
+        const dataBits = encryptedData.split('').map(char =>
+          char.charCodeAt(0).toString(2).padStart(8, '0')
+        ).join('')
+
+        // Add length prefix (32 bits)
+        const lengthBits = dataBits.length.toString(2).padStart(32, '0')
+        const allBits = lengthBits + dataBits
+
+        // Embed the data
+        const data = coverData.data
+        for (let i = 0; i < allBits.length; i++) {
+          const pixelIndex = Math.floor(i / 2) * 4
+          const colorOffset = i % 2
+          data[pixelIndex + colorOffset] = (data[pixelIndex + colorOffset] & 254) | parseInt(allBits[i])
+        }
+
+        // Set marker
+        data[data.length - 4] = (data[data.length - 4] & 254) | 1
+
+        coverCtx.putImageData(coverData, 0, 0)
+        const resultUrl = coverCanvas.toDataURL('image/png')
+        setResultImage(resultUrl)
+
+        console.log('Encoding completed successfully')
+      } catch (error) {
+        console.error('Encoding error:', error)
+        alert(error.message)
+        setResultImage(null)
       }
-      
-      coverImg.src = coverImage
-      
-    } catch (error) {
-      console.error('Encoding error:', error)
-      alert(`Error hiding the image: ${error.message}`)
+    }
+
+    coverImg.onerror = () => {
+      alert('Error loading cover image')
       setResultImage(null)
     }
+
+    coverImg.src = coverImage
   }
 
   const handleDecode = async () => {
@@ -179,28 +213,38 @@ function App() {
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
           const data = imageData.data
           
-          // Extract length (first 32 bits)
-          let lengthBits = ''
-          for (let i = 0; i < 32; i++) {
-            const pixelIndex = Math.floor(i / 2) * 4
-            const colorOffset = i % 2
-            lengthBits += data[pixelIndex + colorOffset] & 1
-          }
-          
-          const messageLength = parseInt(lengthBits, 2)
-          console.log('Detected message length:', messageLength)
+           // Extract length (first 32 bits)
+           let lengthBits = ''
+           for (let i = 0; i < 32; i++) {
+             const pixelIndex = Math.floor(i / 2) * 4
+             const colorOffset = i % 2
+             const bit = data[pixelIndex + colorOffset] & 1
+             lengthBits += bit
+           }
+
+           const messageLength = parseInt(lengthBits, 2)
           
           if (messageLength <= 0) {
             throw new Error('No hidden data found in this image')
           }
 
-          // Extract data bits
-          let dataBits = ''
-          for (let i = 0; i < messageLength; i++) {
-            const pixelIndex = Math.floor((i + 32) / 2) * 4
-            const colorOffset = (i + 32) % 2
-            dataBits += data[pixelIndex + colorOffset] & 1
-          }
+           // Extract data bits
+           let dataBits = ''
+           const maxDataIndex = data.length - 1
+
+           for (let i = 0; i < messageLength; i++) {
+             const pixelIndex = Math.floor((i + 32) / 2) * 4
+             const colorOffset = (i + 32) % 2
+             const dataIndex = pixelIndex + colorOffset
+
+             if (dataIndex > maxDataIndex) {
+               // Stop if we run out of image data
+               console.log(`Stopping extraction at bit ${i} due to end of image data`)
+               break
+             }
+
+             dataBits += data[dataIndex] & 1
+           }
           
           // Convert to encrypted data
           let encryptedData = ''
@@ -211,59 +255,50 @@ function App() {
             }
           }
           
+
+          
           // Decrypt and process
           const decrypted = decryptData(encryptedData, password)
           if (!decrypted) {
             throw new Error('Failed to decrypt data. Please check the password.')
           }
 
-          console.log('Successfully decrypted data')
 
-          // Split the decrypted data
-          const separatorIndex = decrypted.indexOf('|')
-          if (separatorIndex === -1) {
-            throw new Error('Invalid data format')
-          }
 
-          const dimensions = decrypted.substring(0, separatorIndex)
-          const pixels = decrypted.substring(separatorIndex + 1)
-
-          // Parse dimensions
-          const [width, height] = dimensions.split(',').map(Number)
-          console.log('Hidden image dimensions:', width, 'x', height)
-
-          if (!width || !height || width <= 0 || height <= 0) {
-            throw new Error('Invalid image dimensions')
-          }
-
-          // Convert pixel data
-          const pixelArray = pixels.split(',').map(Number)
-          const expectedLength = width * height * 4
-
-          if (pixelArray.length !== expectedLength) {
-            throw new Error(`Invalid pixel data length: ${pixelArray.length} vs expected ${expectedLength}`)
-          }
-
-          // Reconstruct hidden image
-          const hiddenCanvas = document.createElement('canvas')
-          hiddenCanvas.width = width
-          hiddenCanvas.height = height
-          const hiddenCtx = hiddenCanvas.getContext('2d')
-          const hiddenImageData = hiddenCtx.createImageData(width, height)
-
-          // Set pixel data
-          for (let i = 0; i < pixelArray.length; i++) {
-            if (isNaN(pixelArray[i]) || pixelArray[i] < 0 || pixelArray[i] > 255) {
-              pixelArray[i] = 0
+            // Split the decrypted data
+            const firstSeparator = decrypted.indexOf('|')
+            if (firstSeparator === -1) {
+              throw new Error('Invalid data format')
             }
-            hiddenImageData.data[i] = pixelArray[i]
-          }
 
-          hiddenCtx.putImageData(hiddenImageData, 0, 0)
-          
-          const revealedImage = hiddenCanvas.toDataURL('image/png')
-          console.log('Successfully reconstructed hidden image')
-          setDecodedImage(revealedImage)
+            const type = decrypted.substring(0, firstSeparator)
+            const remaining = decrypted.substring(firstSeparator + 1)
+
+            if (type === 'text') {
+              // Convert bytes to text
+              const fileBytes = remaining.split(',').map(Number)
+              const decoder = new TextDecoder()
+              const text = decoder.decode(new Uint8Array(fileBytes))
+              setDecodedText(text)
+              setDecodedImage(null)
+            } else if (type === 'file') {
+              // Parse mime type
+              const secondSeparator = remaining.indexOf('|')
+              if (secondSeparator === -1) {
+                throw new Error('Invalid file data format')
+              }
+              const mimeType = remaining.substring(0, secondSeparator)
+              const fileBytesStr = remaining.substring(secondSeparator + 1)
+              // Convert file bytes
+              const fileBytes = fileBytesStr.split(',').map(Number)
+              const blob = new Blob([new Uint8Array(fileBytes)], { type: mimeType })
+              const revealedUrl = URL.createObjectURL(blob)
+              console.log('Successfully reconstructed hidden file')
+              setDecodedImage(revealedUrl)
+              setDecodedText('')
+            } else {
+              throw new Error('Invalid data type')
+            }
           
         } catch (error) {
           console.error('Processing error:', error)
@@ -367,37 +402,78 @@ function App() {
 
         {mode === 'encode' ? (
           <div className="encode-section">
-            <div className="image-upload">
-              <h3>Cover Image:</h3>
-              <input type="file" accept="image/*" onChange={handleCoverImageUpload} />
-              {coverImage && (
-                <div className="image-preview">
-                  <img src={coverImage} alt="Cover" className="preview" />
-                  <button 
-                    className="download-btn"
-                    onClick={() => downloadImage(coverImage, 'cover-image.png')}
-                  >
-                    Download Cover Image
-                  </button>
-                </div>
-              )}
-            </div>
+             <div className="secret-type-selector">
+               <h3>What to hide:</h3>
+               <label>
+                 <input
+                   type="radio"
+                   value="file"
+                   checked={secretType === 'file'}
+                   onChange={(e) => setSecretType(e.target.value)}
+                 />
+                 File (image, audio, etc.)
+               </label>
+               <label>
+                 <input
+                   type="radio"
+                   value="text"
+                   checked={secretType === 'text'}
+                   onChange={(e) => setSecretType(e.target.value)}
+                 />
+                 Text
+               </label>
+             </div>
+             <div className="image-upload">
+               <h3>Cover Image:</h3>
+               <input type="file" accept="image/*" onChange={handleCoverImageUpload} />
+               {coverImage && (
+                 <div className="image-preview">
+                   <img src={coverImage} alt="Cover" className="preview" />
+                   <p>Cover file size: {coverFileSize >= 1024 * 1024 * 1024 ? `${(coverFileSize / (1024 * 1024 * 1024)).toFixed(2)} GB` : coverFileSize >= 1024 * 1024 ? `${(coverFileSize / (1024 * 1024)).toFixed(2)} MB` : `${coverFileSize} bytes`}</p>
+                   <button
+                     className="download-btn"
+                     onClick={() => downloadImage(coverImage, 'cover-image.png')}
+                   >
+                     Download Cover Image
+                   </button>
+                 </div>
+               )}
+             </div>
             
-            <div className="image-upload">
-              <h3>Secret Image:</h3>
-              <input type="file" accept="image/*" onChange={handleSecretImageUpload} />
-              {secretImage && (
-                <div className="image-preview">
-                  <img src={secretImage} alt="Secret" className="preview" />
-                  <button 
-                    className="download-btn"
-                    onClick={() => downloadImage(secretImage, 'secret-image.png')}
-                  >
-                    Download Secret Image
-                  </button>
+              {secretType === 'file' ? (
+                <div className="image-upload">
+                  <h3>Secret File:</h3>
+                  <input type="file" accept="*/*" onChange={handleSecretUpload} />
+                  {secretImage && (
+                    <div className="image-preview">
+                      <img src={secretImage} alt="Secret" className="preview" />
+                      <button
+                        className="download-btn"
+                        onClick={() => downloadImage(secretImage, 'secret-image.png')}
+                      >
+                        Download Secret File
+                      </button>
+                    </div>
+                  )}
+                  {requiredPixels > 0 && (
+                    <p>Secret file size: {secretFileSize >= 1024 * 1024 * 1024 ? `${(secretFileSize / (1024 * 1024 * 1024)).toFixed(2)} GB` : secretFileSize >= 1024 * 1024 ? `${(secretFileSize / (1024 * 1024)).toFixed(2)} MB` : `${secretFileSize} bytes`}. Minimum cover file size needed: {((requiredPixels * 4) / (1024 * 1024)).toFixed(2)} MB (uncompressed estimate; requires at least {requiredPixels.toLocaleString()} pixels)</p>
+                  )}
+                </div>
+              ) : (
+                <div className="text-input">
+                  <h3>Secret Text:</h3>
+                  <textarea
+                    placeholder="Enter the text to hide"
+                    value={secretText}
+                    onChange={handleSecretTextChange}
+                    rows="10"
+                    cols="50"
+                  />
+                  {secretText && (
+                    <p>Text length: {secretText.length} characters</p>
+                  )}
                 </div>
               )}
-            </div>
             
             <input
               type="password"
@@ -405,7 +481,7 @@ function App() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-            <button onClick={handleEncode}>Hide Image</button>
+             <button onClick={handleEncode}>Hide Data</button>
             {resultImage && (
               <div className="result">
                 <h3>Result Image:</h3>
@@ -452,18 +528,29 @@ function App() {
             />
             <button onClick={handleDecode} className="reveal-btn">Revelio</button>
             
-            {decodedImage && (
-              <div className="result">
-                <h3>Hidden Image:</h3>
-                <img src={decodedImage} alt="Decoded" className="preview" />
-                <button 
-                  className="download-btn"
-                  onClick={() => downloadImage(decodedImage, 'revealed-image.png')}
-                >
-                  Download Hidden Image
-                </button>
-              </div>
-            )}
+             {(decodedImage || decodedText) && (
+               <div className="result">
+                 {decodedText ? (
+                   <>
+                     <h3>Hidden Text:</h3>
+                     <p>{decodedText}</p>
+                   </>
+                 ) : (
+                   <>
+                     <h3>Hidden File:</h3>
+                     {decodedImage && decodedImage.startsWith('data:image/') ? (
+                       <img src={decodedImage} alt="Decoded" className="preview" />
+                     ) : null}
+                     <button
+                       className="download-btn"
+                       onClick={() => downloadImage(decodedImage, 'revealed-file')}
+                     >
+                       Download Hidden File
+                     </button>
+                   </>
+                 )}
+               </div>
+             )}
           </div>
         )}
       </div>
