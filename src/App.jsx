@@ -19,7 +19,7 @@ const [resultImage, setResultImage] = useState(null)
    const [secretFileType, setSecretFileType] = useState('')
   const [coverFileName, setCoverFileName] = useState('')
   const [secretFileName, setSecretFileName] = useState('')
-  const [decodedFileName, setDecodedFileName] = useState('')
+
 
 const getFileCategory = (file) => {
     const extension = file.name.split('.').pop()?.toLowerCase() || ''
@@ -133,7 +133,7 @@ const handleCoverImageUpload = (e) => {
     setRequiredPixels(requiredPixels)
   }
 
-  // Simple XOR encryption
+   // Simple XOR encryption
   const encryptData = (data, pass) => {
     let uint8Data
     if (typeof data === 'string') {
@@ -151,34 +151,61 @@ const handleCoverImageUpload = (e) => {
       encryptedBytes[i] = uint8Data[i] ^ pass.charCodeAt(i % pass.length)
     }
 
-    // Convert to base64 string
-    let binary = ''
-    for (let i = 0; i < encryptedBytes.length; i++) {
-      binary += String.fromCharCode(encryptedBytes[i])
+    // Validate that encryption didn't create all zeros (which would indicate a problem)
+    const hasNonZero = encryptedBytes.some(byte => byte !== 0)
+    if (!hasNonZero) {
+      console.warn('Encryption resulted in all zeros - password may be invalid')
     }
-    return btoa(binary)
+
+    return encryptedBytes
   }
 
   // Simple XOR decryption
-  const decryptData = (encoded, pass) => {
+  const decryptData = (encryptedData, pass) => {
     try {
-      // First decode from Base64
-      const encryptedData = atob(encoded)
-      
-      // Convert to bytes
-      const encryptedBytes = new Uint8Array(encryptedData.length)
-      for (let i = 0; i < encryptedData.length; i++) {
-        encryptedBytes[i] = encryptedData.charCodeAt(i)
+      if (!pass || pass.length === 0) {
+        throw new Error('Password is required for decryption')
       }
+
+      let encryptedBytes
+       
+      if (typeof encryptedData === 'string') {
+        // Handle legacy base64 encoded data
+        const decodedData = atob(encryptedData)
+        encryptedBytes = new Uint8Array(decodedData.length)
+        for (let i = 0; i < decodedData.length; i++) {
+          encryptedBytes[i] = decodedData.charCodeAt(i)
+        }
+      } else if (encryptedData instanceof Uint8Array) {
+        encryptedBytes = encryptedData
+      } else {
+        throw new Error('Unsupported encrypted data type')
+      }
+
+      console.log('Decrypting with password:', pass)
+      console.log('First 5 password chars:', Array.from(pass.slice(0, 5)).map(c => c.charCodeAt(0)))
 
       // Perform XOR decryption
       const decryptedBytes = new Uint8Array(encryptedBytes.length)
       for (let i = 0; i < encryptedBytes.length; i++) {
-        decryptedBytes[i] = encryptedBytes[i] ^ pass.charCodeAt(i % pass.length)
+        const keyChar = pass.charCodeAt(i % pass.length)
+        decryptedBytes[i] = encryptedBytes[i] ^ keyChar
+      }
+
+      console.log('First 10 decrypted bytes:', Array.from(decryptedBytes.slice(0, 10)))
+
+      // Quick validation - check if decrypted data looks reasonable
+      const hasPrintableChars = decryptedBytes.slice(0, 20).some(byte => 
+        (byte >= 32 && byte <= 126) || byte === 124 // printable ASCII or '|'
+      )
+
+      if (!hasPrintableChars) {
+        console.warn('Decrypted data contains no printable characters - password may be wrong')
       }
 
       return decryptedBytes
-    } catch {
+    } catch (error) {
+      console.error('Decryption error:', error)
       return null
     }
   }
@@ -200,22 +227,44 @@ const handleEncode = async () => {
         const headerBytes = new TextEncoder().encode(header)
         fullData.set(headerBytes)
         fullData.set(textBytes, headerBytes.length)
+        console.log('Text data prepared - Header:', header, 'Text length:', secretText.length)
       } else {
         const metadata = JSON.stringify({ name: secretFileName, type: secretFileType })
-        const header = "file|" + btoa(metadata) + "|"
+        const encodedMetadata = btoa(metadata)
+        const header = "file|" + encodedMetadata + "|"
         const headerBytes = new TextEncoder().encode(header)
         fullData = new Uint8Array(headerBytes.length + secretData.length)
         fullData.set(headerBytes)
         fullData.set(secretData, headerBytes.length)
         
+        console.log('File data prepared - Header:', header)
+        console.log('Original metadata:', metadata)
+        console.log('Encoded metadata:', encodedMetadata)
         console.log('Original file data length:', secretData.length)
         console.log('Header length:', headerBytes.length)
         console.log('Full data length:', fullData.length)
+        console.log('Full data preview:', Array.from(fullData.slice(0, Math.min(20, fullData.length))))
       }
 
-      // Encrypt the data
+       // Encrypt the data
       const encryptedData = encryptData(fullData, password)
       console.log('Encrypted data length:', encryptedData.length)
+      console.log('Encrypted data preview:', Array.from(encryptedData.slice(0, Math.min(20, encryptedData.length))))
+
+      // Verify encryption is reversible
+      const testDecrypted = decryptData(encryptedData, password)
+      if (!testDecrypted || testDecrypted.length !== fullData.length) {
+        throw new Error('Encryption validation failed - data may not be recoverable')
+      }
+      
+      // Verify the decrypted test data matches original
+      const originalType = String.fromCharCode(...fullData.slice(0, 4))
+      const testType = String.fromCharCode(...testDecrypted.slice(0, 4))
+      if (originalType !== testType) {
+        console.warn('Encryption test failed - type mismatch:', originalType, 'vs', testType)
+      } else {
+        console.log('Encryption validation passed - type:', testType)
+      }
 
       if (coverImage.isImage) {
         // Use LSB steganography for images
@@ -236,7 +285,7 @@ const handleEncode = async () => {
     
 
   
-      const encodeImageLSB = async (imageDataURL, encryptedData) => {
+       const encodeImageLSB = async (imageDataURL, encryptedData) => {
     return new Promise((resolve, reject) => {
       const coverCanvas = document.createElement('canvas')
       const coverCtx = coverCanvas.getContext('2d')
@@ -250,10 +299,11 @@ const handleEncode = async () => {
 
           const coverData = coverCtx.getImageData(0, 0, coverCanvas.width, coverCanvas.height)
 
-          // Convert to binary
-          const dataBits = encryptedData.split('').map(char =>
-            char.charCodeAt(0).toString(2).padStart(8, '0')
-          ).join('')
+          // Convert encrypted bytes to binary
+          let dataBits = ''
+          for (let i = 0; i < encryptedData.length; i++) {
+            dataBits += encryptedData[i].toString(2).padStart(8, '0')
+          }
 
           // Add length prefix (32 bits)
           const lengthBits = dataBits.length.toString(2).padStart(32, '0')
@@ -263,39 +313,64 @@ const handleEncode = async () => {
             throw new Error('Cover image is too small to hide the secret data.')
           }
 
-          // Embed the data using LSB
-          const data = coverData.data
-          for (let i = 0; i < allBits.length; i++) {
-            const pixelIndex = Math.floor(i / 2) * 4
-            const colorOffset = i % 2
-            data[pixelIndex + colorOffset] = (data[pixelIndex + colorOffset] & 254) | parseInt(allBits[i])
-          }
+           // Embed the data using LSB
+           const data = coverData.data
+           console.log('Embedding', allBits.length, 'bits into', data.length / 4, 'pixels')
+           
+           for (let i = 0; i < allBits.length; i++) {
+             const pixelIndex = Math.floor(i / 2) * 4
+             const colorOffset = i % 2
+             const bit = parseInt(allBits[i]) & 1
+             data[pixelIndex + colorOffset] = (data[pixelIndex + colorOffset] & 254) | bit
+           }
+
+           // Verify some embedded bits
+           console.log('First 20 embedded bits:', allBits.substring(0, 20))
+           console.log('Verification - first 5 extracted bits:')
+           for (let i = 0; i < 5; i++) {
+             const pixelIndex = Math.floor((i + 32) / 2) * 4
+             const colorOffset = (i + 32) % 2
+             const extractedBit = data[pixelIndex + colorOffset] & 1
+             console.log(`Bit ${i}: ${allBits[i + 32]} -> ${extractedBit}`)
+           }
 
           // Set marker
           data[data.length - 4] = (data[data.length - 4] & 254) | 1
 
           coverCtx.putImageData(coverData, 0, 0)
 
-          // Preserve original image format
-          let originalFormat = 'image/png'
-          try {
-            const extractedFormat = imageDataURL.split(';')[0].split(':')[1]
-            // Only use extracted format if it's supported by canvas
-            if (extractedFormat && ['image/jpeg', 'image/png', 'image/webp'].includes(extractedFormat)) {
-              originalFormat = extractedFormat
-            }
-          } catch (e) {
-            // Fall back to PNG if format extraction fails
-            originalFormat = 'image/png'
-          }
-          const resultUrl = coverCanvas.toDataURL(originalFormat)
+          // Test extraction to verify data integrity
+          console.log('Testing data extraction after embedding...')
+          const testData = coverCtx.getImageData(0, 0, coverCanvas.width, coverCanvas.height)
           
-          // Set result with proper file extension and format info
-          const fileExtension = originalFormat.split('/')[1] || 'png'
+          // Extract first few bits to verify embedding worked
+          let testLengthBits = ''
+          for (let i = 0; i < 32; i++) {
+            const pixelIndex = Math.floor(i / 2) * 4
+            const colorOffset = i % 2
+            const bit = testData.data[pixelIndex + colorOffset] & 1
+            testLengthBits += bit.toString()
+          }
+          
+          const testLength = parseInt(testLengthBits, 2)
+          console.log('Verification - Embedded length:', allBits.length, 'bits, Extracted length:', testLength, 'bits')
+          
+          if (testLength !== allBits.length) {
+            console.warn('Length mismatch detected during verification!')
+            console.log('Difference:', testLength - allBits.length, 'bits')
+            console.log('This may affect data extraction')
+          }
+
+ // Always use PNG format for LSB steganography to avoid compression artifacts
+          // JPEG compression will corrupt LSB data
+          const resultUrl = coverCanvas.toDataURL('image/png')
+          console.log('Using PNG format to preserve LSB data')
+          
+          // Set result with PNG format for LSB compatibility
           setResultImage({
             dataURL: resultUrl,
-            type: originalFormat,
-            name: `stego-cover.${fileExtension}`,
+            type: 'image/png',
+            name: `stego-cover.png`,
             isImage: true
           })
           resolve()
@@ -331,7 +406,6 @@ const handleEncode = async () => {
       const markerBytes = new TextEncoder().encode(marker)
       const metadataBytes = new TextEncoder().encode(metadata)
       const separatorBytes = new TextEncoder().encode("|")
-      const encryptedBytes = new TextEncoder().encode(encryptedData)
 
       // Create new file with hidden data appended
       const stegoBytes = new Uint8Array(
@@ -339,7 +413,7 @@ const handleEncode = async () => {
         markerBytes.length +
         metadataBytes.length +
         separatorBytes.length +
-        encryptedBytes.length
+        encryptedData.length
       )
 
       // Copy original file
@@ -357,7 +431,7 @@ const handleEncode = async () => {
       offset += separatorBytes.length
 
       // Append encrypted data
-      stegoBytes.set(encryptedBytes, offset)
+      stegoBytes.set(encryptedData, offset)
 
       // Create blob with proper MIME type
       const finalBlob = new Blob([stegoBytes], { 
@@ -383,6 +457,11 @@ const handleEncode = async () => {
       return
     }
 
+    console.log('=== DECODE DEBUG INFO ===')
+    console.log('Password:', password)
+    console.log('Password length:', password.length)
+    console.log('Password char codes:', Array.from(password).map(c => c.charCodeAt(0)))
+
     try {
       if (coverImage.isImage) {
         // Decode using LSB steganography for images
@@ -393,7 +472,13 @@ const handleEncode = async () => {
       }
     } catch (error) {
       console.error('Decoding error:', error)
-      alert(error.message)
+      
+      // Provide more helpful error messages
+      if (error.message.includes('No type separator found')) {
+        alert(error.message + '\n\nCommon causes:\n1. Wrong password (most common)\n2. Image was modified after encoding\n3. Different encoding/decoding algorithm')
+      } else {
+        alert(error.message)
+      }
       setDecodedImage(null)
       setDecodedText('')
     }
@@ -414,16 +499,18 @@ const handleEncode = async () => {
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
           const data = imageData.data
 
-          // Extract length (first 32 bits)
-          let lengthBits = ''
-          for (let i = 0; i < 32; i++) {
-            const pixelIndex = Math.floor(i / 2) * 4
-            const colorOffset = i % 2
-            const bit = data[pixelIndex + colorOffset] & 1
-            lengthBits += bit
-          }
+           // Extract length (first 32 bits)
+           let lengthBits = ''
+           for (let i = 0; i < 32; i++) {
+             const pixelIndex = Math.floor(i / 2) * 4
+             const colorOffset = i % 2
+             const bit = data[pixelIndex + colorOffset] & 1
+             lengthBits += bit.toString()
+           }
 
-          const messageLength = parseInt(lengthBits, 2)
+           console.log('Extracted length bits:', lengthBits)
+           const messageLength = parseInt(lengthBits, 2)
+           console.log('Calculated message length:', messageLength, 'bits')
 
           if (messageLength <= 0) {
             throw new Error('No hidden data found in this image')
@@ -431,7 +518,7 @@ const handleEncode = async () => {
 
           // Extract data bits
           let dataBits = ''
-          const maxDataIndex = data.length - 1
+          const maxDataIndex = data.length - 4 // Leave room for marker
 
           for (let i = 0; i < messageLength; i++) {
             const pixelIndex = Math.floor((i + 32) / 2) * 4
@@ -443,19 +530,55 @@ const handleEncode = async () => {
               break
             }
 
-            dataBits += data[dataIndex] & 1
+            // Extract the LSB and ensure it's a valid bit (0 or 1)
+            const bit = data[dataIndex] & 1
+            dataBits += bit.toString()
           }
 
-          // Convert to encrypted data
-          let encryptedData = ''
+          console.log('Extracted bits length:', dataBits.length)
+          console.log('Expected bits length:', messageLength)
+
+          // Convert bits to encrypted bytes
+          const encryptedBytes = []
+          console.log('Converting bits to bytes...')
+          
           for (let i = 0; i < dataBits.length; i += 8) {
-            const byte = dataBits.substr(i, 8)
-            if (byte.length === 8) {
-              encryptedData += String.fromCharCode(parseInt(byte, 2))
+            const byteStr = dataBits.substr(i, 8)
+            if (byteStr.length === 8) {
+              const byteValue = parseInt(byteStr, 2)
+              encryptedBytes.push(byteValue)
+              
+              // Debug first few bytes
+              if (i < 32) {
+                console.log(`Byte ${i/8}: bits="${byteStr}" -> value=${byteValue}`)
+              }
             }
           }
 
-          processDecryptedData(encryptedData, resolve, reject)
+          // Validate that we extracted the correct number of bytes
+          const expectedByteCount = Math.floor(dataBits.length / 8)
+          if (encryptedBytes.length !== expectedByteCount) {
+            console.warn(`Expected ${expectedByteCount} bytes, got ${encryptedBytes.length}`)
+          }
+
+          // Validate the extracted data before processing
+          if (encryptedBytes.length === 0) {
+            throw new Error('No valid data extracted from image')
+          }
+
+          // Check if the extracted data looks reasonable (not all zeros or corrupted)
+          const hasValidData = encryptedBytes.some(byte => byte !== 0)
+          if (!hasValidData) {
+            throw new Error('Extracted data appears to be empty or corrupted')
+          }
+
+          console.log('First 20 extracted bytes:', Array.from(encryptedBytes.slice(0, 20)))
+
+          // Quick validation: check if the first few bytes could be "file|"
+          const firstBytesString = String.fromCharCode(...encryptedBytes.slice(0, 10))
+          console.log('First bytes as string:', firstBytesString)
+
+          processDecryptedData(new Uint8Array(encryptedBytes), resolve, reject)
 
         } catch (error) {
           reject(error)
@@ -519,11 +642,10 @@ const handleEncode = async () => {
       // Extract metadata
       const metadataBytes = stegoBytes.slice(offset, metadataEnd)
       const metadataStr = new TextDecoder().decode(metadataBytes)
-      const metadata = JSON.parse(metadataStr)
+      JSON.parse(metadataStr)
 
       // Extract encrypted data
-      const encryptedDataBytes = stegoBytes.slice(metadataEnd + 1)
-      const encryptedData = new TextDecoder().decode(encryptedDataBytes)
+      const encryptedData = stegoBytes.slice(metadataEnd + 1)
 
       // Process the decrypted data
       await processDecryptedData(encryptedData,
@@ -537,13 +659,26 @@ const handleEncode = async () => {
 
   const processDecryptedData = async (encryptedData, resolve, reject) => {
     try {
+      // Validate password
+      if (!password || password.length < 1) {
+        throw new Error('Password is required for decryption')
+      }
+
+      console.log('Attempting decryption with password:', password.length, 'characters')
+      console.log('Encrypted data length:', encryptedData.length)
+      console.log('First 20 bytes of encrypted data:', Array.from(encryptedData.slice(0, 20)))
+
       // Decrypt and process
       const decryptedBytes = decryptData(encryptedData, password)
       if (!decryptedBytes) {
-        throw new Error('Failed to decrypt data. Please check the password.')
+        throw new Error('Failed to decrypt data. The password may be incorrect.')
       }
 
       console.log('Decrypted data length:', decryptedBytes.length)
+
+      // Try to decode as UTF-8 first to see the structure
+      const decodedString = new TextDecoder('utf-8', { fatal: false }).decode(decryptedBytes)
+      console.log('Decrypted data as string:', decodedString.substring(0, 100))
 
       // Find first separator for type
       let firstSeparatorIndex = -1
@@ -554,25 +689,88 @@ const handleEncode = async () => {
         }
       }
 
+      // If no separator found, try to find readable text patterns
+      if (firstSeparatorIndex === -1) {
+        console.log('Looking for alternative separators...')
+        // Try to decode as string and look for separators
+        const decodedStringAlt = String.fromCharCode(...decryptedBytes.slice(0, Math.min(100, decryptedBytes.length)))
+        console.log('Decoded string preview:', decodedStringAlt)
+        
+        // Look for "text" or "file" patterns in the decoded string
+        const textIndex = decodedStringAlt.indexOf('text')
+        const fileIndex = decodedStringAlt.indexOf('file')
+        
+        if (textIndex !== -1 && decodedStringAlt[textIndex + 4] === '|') {
+          firstSeparatorIndex = textIndex + 4
+          console.log('Found text pattern at position:', textIndex)
+        } else if (fileIndex !== -1 && decodedStringAlt[fileIndex + 4] === '|') {
+          firstSeparatorIndex = fileIndex + 4
+          console.log('Found file pattern at position:', fileIndex)
+        }
+      }
+
       if (firstSeparatorIndex === -1) {
         console.log('No separator found in decrypted data')
-        throw new Error('Invalid data format')
+        console.log('First 50 bytes:', Array.from(decryptedBytes.slice(0, 50)))
+        console.log('Decrypted data as string attempt:', String.fromCharCode(...decryptedBytes.slice(0, 50)))
+        
+        // Check for common password issues
+        const entropy = new Set(decryptedBytes.slice(0, 50)).size
+        const isHighEntropy = entropy > 40
+        
+        if (isHighEntropy) {
+          console.error('High entropy data detected - likely wrong password')
+          throw new Error('Decryption failed: The data appears to be encrypted with a different password. Please verify you are using the exact same password used during encoding.')
+        }
+        
+        // Last resort: try to find readable text patterns
+        console.log('Attempting alternative decoding approaches...')
+        
+        // Check if data might be incorrectly decrypted by looking for common patterns
+        const dataAsString = String.fromCharCode(...decryptedBytes).toLowerCase()
+        if (dataAsString.includes('text') || dataAsString.includes('file')) {
+          console.log('Found text/file patterns in alternative decoding')
+          // Try to extract using string methods
+          const match = dataAsString.match(/(text|file)\|/)
+          if (match) {
+            firstSeparatorIndex = match.index + match[0].length
+            console.log('Using alternative separator position:', firstSeparatorIndex)
+          }
+        }
+        
+        if (firstSeparatorIndex === -1) {
+          throw new Error('Invalid data format: No type separator found. The data may not be properly encoded or the password might be incorrect.\n\nHint: Make sure you are using the exact same password (case-sensitive) that was used to encode the image.')
+        }
       }
 
       const typeBytes = decryptedBytes.slice(0, firstSeparatorIndex)
-      const type = String.fromCharCode(...typeBytes)
+      // Use TextDecoder for proper UTF-8 decoding
+      let type
+      try {
+        type = new TextDecoder('utf-8', { fatal: true }).decode(typeBytes).trim()
+      } catch {
+        // Fallback to simple ASCII conversion if UTF-8 fails
+        type = String.fromCharCode(...typeBytes).trim()
+      }
       const remainingData = decryptedBytes.slice(firstSeparatorIndex + 1)
       
-      console.log('Data type:', type)
+      console.log('Raw type bytes:', Array.from(typeBytes))
+      console.log('Data type:', `"${type}"`)
       console.log('Remaining data length:', remainingData.length)
+      console.log('First 20 bytes of remaining data:', Array.from(remainingData.slice(0, 20)))
 
       if (type === 'text') {
         // Convert bytes to text
-        const decoder = new TextDecoder()
-        const text = decoder.decode(remainingData)
+        let text
+        try {
+          const decoder = new TextDecoder('utf-8', { fatal: true })
+          text = decoder.decode(remainingData)
+        } catch {
+          // Fallback to simple ASCII conversion if UTF-8 fails
+          text = String.fromCharCode(...remainingData)
+        }
         setDecodedText(text)
         setDecodedImage(null)
-        setDecodedFileName('')
         if (resolve) resolve()
       } else if (type === 'file') {
         // Find second separator for metadata
@@ -590,8 +788,21 @@ const handleEncode = async () => {
 
         try {
           const metadataBytes = remainingData.slice(0, secondSeparatorIndex)
-          const metadataStr = atob(String.fromCharCode(...metadataBytes))
-          const metadata = JSON.parse(metadataStr)
+          const metadataStr = new TextDecoder('utf-8').decode(metadataBytes)
+          
+          // Decode the base64 metadata first
+          let decodedMetadata
+          try {
+            decodedMetadata = atob(metadataStr)
+            console.log('Base64 metadata:', metadataStr)
+            console.log('Decoded metadata:', decodedMetadata)
+          } catch (e) {
+            // If it's not base64, try parsing directly
+            decodedMetadata = metadataStr
+            console.log('Using raw metadata (not base64):', metadataStr)
+          }
+          
+          const metadata = JSON.parse(decodedMetadata)
           const fileBytes = remainingData.slice(secondSeparatorIndex + 1)
 
           console.log('Metadata:', metadata)
@@ -602,7 +813,6 @@ const handleEncode = async () => {
           const revealedUrl = URL.createObjectURL(blob)
           console.log('Successfully reconstructed hidden file:', metadata.name)
           setDecodedImage(revealedUrl)
-          setDecodedFileName(metadata.name)
           setDecodedText('')
           if (resolve) resolve()
         } catch (error) {
@@ -610,7 +820,11 @@ const handleEncode = async () => {
           throw new Error('Failed to parse file metadata: ' + error.message)
         }
       } else {
-        throw new Error('Invalid data type')
+        console.error('Unexpected data type:', `"${type}"`)
+        console.error('Expected "text" or "file"')
+        console.error('First 50 bytes of decrypted data:', Array.from(decryptedBytes.slice(0, 50)))
+        console.error('Decrypted string preview:', decodedString.substring(0, 100))
+        throw new Error(`Invalid data type: "${type}". Expected "text" or "file". The data may be corrupted or the password might be incorrect.`)
       }
 
     } catch (error) {
@@ -619,40 +833,7 @@ const handleEncode = async () => {
     }
   }
 
-  // Add this helper function to extract the clean cover image (removing hidden data)
-  const extractCleanCover = (encodedImageData) => {
-    try {
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d')
-      const img = new Image()
-      
-      return new Promise((resolve, reject) => {
-        img.onload = () => {
-          canvas.width = img.width
-          canvas.height = img.height
-          ctx.drawImage(img, 0, 0)
-          
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-          const data = imageData.data
-          
-          // Clear LSB of first two color channels where data was hidden
-          for (let i = 0; i < data.length; i += 4) {
-            data[i] = data[i] & 254     // Clear LSB of red channel
-            data[i + 1] = data[i + 1] & 254  // Clear LSB of green channel
-          }
-          
-          ctx.putImageData(imageData, 0, 0)
-          resolve(canvas.toDataURL('image/png'))
-        }
-        
-        img.onerror = () => reject(new Error('Failed to load image'))
-        img.src = encodedImageData
-      })
-    } catch (error) {
-      console.error('Error extracting clean cover:', error)
-      throw new Error('Failed to extract clean cover image')
-    }
-  }
+
 
   // Add this helper function at the top of your component
   const downloadImage = (dataUrl, fileName) => {
@@ -686,40 +867,7 @@ const handleEncode = async () => {
       })
   }
 
-  // Add this function to extract the cover image
-  const extractCoverImage = (encodedImageData) => {
-    try {
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d')
-      const img = new Image()
-      
-      return new Promise((resolve, reject) => {
-        img.onload = () => {
-          canvas.width = img.width
-          canvas.height = img.height
-          ctx.drawImage(img, 0, 0)
-          
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-          const data = imageData.data
-          
-          // Clear LSB of first two color channels where data was hidden
-          for (let i = 0; i < data.length; i += 4) {
-            data[i] = data[i] & 254     // Clear LSB of red channel
-            data[i + 1] = data[i + 1] & 254  // Clear LSB of green channel
-          }
-          
-          ctx.putImageData(imageData, 0, 0)
-          resolve(canvas.toDataURL('image/png'))
-        }
-        
-        img.onerror = () => reject(new Error('Failed to load image'))
-        img.src = encodedImageData
-      })
-    } catch (error) {
-      console.error('Error extracting cover:', error)
-      throw new Error('Failed to extract cover image')
-    }
-  }
+
 
   return (
     <>
