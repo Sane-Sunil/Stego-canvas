@@ -743,27 +743,23 @@ const handleEncode = async () => {
 
         {mode === 'encode' ? (
           <div className="encode-section">
-             <div className="secret-type-selector">
-               <h3>What to hide:</h3>
-               <label>
-                 <input
-                   type="radio"
-                   value="file"
-                   checked={secretType === 'file'}
-                   onChange={(e) => setSecretType(e.target.value)}
-                 />
-                 File (image, audio, etc.)
-               </label>
-               <label>
-                 <input
-                   type="radio"
-                   value="text"
-                   checked={secretType === 'text'}
-                   onChange={(e) => setSecretType(e.target.value)}
-                 />
-                 Text
-               </label>
-             </div>
+              <div className="secret-type-selector">
+                <h3>What to hide:</h3>
+                <div className={`toggle-slider ${secretType === 'text' ? 'text-active' : ''}`}>
+                  <div 
+                    className={`toggle-option ${secretType === 'file' ? 'active' : ''}`}
+                    onClick={() => setSecretType('file')}
+                  >
+                    File
+                  </div>
+                  <div 
+                    className={`toggle-option ${secretType === 'text' ? 'active' : ''}`}
+                    onClick={() => setSecretType('text')}
+                  >
+                    Text
+                  </div>
+                </div>
+              </div>
              <div className="image-upload">
                <h3>Cover File:</h3>
 <input type="file" accept="*/*" onChange={handleCoverImageUpload} />
